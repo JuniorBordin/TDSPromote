@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project basedir="." name="TDSPromote" default="main">
+	
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<!-- Exemplo de arquivo Apache Ant para Compilação a Quente no Protheus  -->
+	<!-- Não deve ser usado remoto devido a demora trafego de rede dos RPO   -->
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<description>Promove a Quente TOTVS RPO Protheus</description>
+	<echo message="Promove a Quente todos os RPO's Protheus"/>
+
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<!-- Para que a mensagem e o refresh sejam possiveis é obrigatorio hab.  -->
+	<!-- No Arquiv. XML/Executar como/Ferramentas Externas/JRE/Executar Mesmo-->
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<echo message="Refresh via Projeto Habilitado"/>
+
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<!-- Ajuste somente esse diretorio src.dir SEM \ a final e os ambientes  -->           
+	<!-- Ajuste somente o Value do ambienteque onde o protheus esta instalado-->           
+	<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+	<property name="src.dir" value="W:\TOTVS IP\Protheus 12.1.17\protheus" />
+    <property name="Environment.PT" value="PRODUCAO_PT" />
+    <property name="Environment.EN" value="PRODUCAO_EN" />
+    <property name="Environment.ES" value="PRODUCAO_ES" />
+	
+	<!-- Configurado para arquivos locais não é necessário Ajuste 			 -->           
+	<property name="lib.dir" value="${basedir}" />
+	<property name="src.dir.apo" value="${src.dir}\apo" />
+	<property name="src.dir.bin" value="${src.dir}\bin" />
+	
+	<!-- Configurado para Data e Hora -->           
+	<tstamp>
+	  <format property="_DATE_" pattern="yyyyMMdd" locale="pt, BR"/>
+	  <format property="_TIME_" pattern="HHmm" locale="pt, BR"/>
+	</tstamp>
+	<echo message="Promote TOTVS RPO on the current date is ${_DATE_} ${_TIME_}"/>
+
+	<!-- Recurso Loop necessario para Promover a Quente RPO Protheus 12 -->
+	<taskdef resource="net/sf/antcontrib/antlib.xml" classpath="${lib.dir}/ant-contrib-1.0b3.jar"/>
+	
+	<!-- target: reset-dir -->
+	<target name="reset-dir" description="Reseta o ambiente de execução">
+		<delete dir="tdspromote" />
+		<mkdir dir="tdspromote" />
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo message="Resetando Diretório tdspromote" />
+	</target>
+	
+	<!-- target: prepare-dir -->
+	<target name="prepare-dir" depends="reset-dir" description="Prepara o ambiente de execução">
+		<mkdir dir="tdspromote_${_DATE_}" />
+		<mkdir dir="${src.dir.apo}\apo_${_DATE_}_${_TIME_}" />
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo message="Criado Diretórios do novo rpo e diretorio de backup dos ini" />
+	</target>
+		
+	<!-- target: copy rpo and appserver.ini -->
+	<target name="copy-file" depends="prepare-dir" description="Copia RPO Compilado para pasta com data">		
+		
+		<copy todir="${basedir}/tdspromote" >
+		    <fileset dir="${src.dir.bin}" casesensitive="false">
+		    	<include name="**/appserver.ini"/> 	
+		    </fileset>
+		</copy>
+		<echo message="Backup dos appserver.ini para ${basedir}\tdspromote" />
+		
+		<copy todir="${src.dir.apo}\apo_${_DATE_}_${_TIME_}" >
+		    <fileset dir="${src.dir.apo}\apo_promote" casesensitive="false">
+		    	<include name="**/TTTE120.RPO"/> 
+		    	<include name="**/TTTS120.RPO"/>
+		    	<include name="**/TTTP120.RPO"/> 
+		    </fileset>
+		</copy>
+		
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo message="Copiado Arquivos RPO para ${src.dir.apo}\apo_${_DATE_}_${_TIME_}" />
+	</target>
+
+	<!-- target: zip-file  appserver.ini -->
+	<target name="zip-file" depends="copy-file" description="Zipa arquivos copiados.">		
+		<zip destfile="${basedir}/tdspromote_${_DATE_}/${_DATE_}_${_TIME_}.zip" basedir="${basedir}/tdspromote" />
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo message="Zipping File" />
+	</target>	
+	
+	<!-- target: Altera ini de todos os balances depends="zip-file"  -->
+	<target name="update-file"  depends="zip-file" description="Ajusta ini">		
+		
+		<!-- Localiza Todos os inis de todos os balances -->
+	 	<fileset id="myfileset" dir="${src.dir.bin}" >
+			<include name="**/appserver.ini"/> 	
+		</fileset>
+		
+		<!-- Converte os inis para inis com source patch -->
+		<pathconvert pathsep="${line.separator}" property="appserver" refid="myfileset" />
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo file="${basedir}/tdspromote/appserver.txt">${appserver}</echo>
+	    <loadfile property="appserver" srcfile="${basedir}/tdspromote/appserver.txt" />
+
+		<!-- Percorre todos os Inis encontrados -->
+		<for list="${appserver}" param="changedFile" delimiter="${line.separator}">
+		  <sequential>
+		 	
+		  	<!-- Lista Arquivo que esta sendo alterado -->
+		  	<echo message="@{changedFile}"/>
+		  	
+		  	<!-- copia os inis para eles mesmos após atualizar -->
+		  	<inifile source="@{changedFile}" dest="@{changedFile}">
+		  	
+		  		<!-- Atualiza conteudo dos inis -->
+		  	    <set section="${Environment.PT}" property="SourcePath" value="${src.dir.apo}\apo_${_DATE_}_${_TIME_}" />
+		  		<set section="${Environment.EN}" property="SourcePath" value="${src.dir.apo}\apo_${_DATE_}_${_TIME_}" />
+		  		<set section="${Environment.ES}" property="SourcePath" value="${src.dir.apo}\apo_${_DATE_}_${_TIME_}" />
+		  			
+		  	</inifile>
+		  	
+		  	<!-- Atualiza conteudo dos inis Selecionados. -->
+			<loadfile srcfile="@{changedFile}" property="result">
+			     <filterchain>
+			           <linecontains>
+			                <contains value="SourcePath"/>
+				       </linecontains>	     	
+			     </filterchain>
+			</loadfile>
+			 
+		  	<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		  	<echo message="${result}"/>
+	
+		    </sequential>
+		</for>
+
+	</target>
+	
+	<!-- target: main -->
+	<target name="main" depends="reset-dir, prepare-dir, copy-file, zip-file, update-file" description="Compila e gera pacote de aplicação de um projeto">
+		<echo message="Tarefa finalizada." />
+		<eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+		<echo message="Não esqueca de executao o refresh no projeto se alguma mensagem de erro ocorrer." />
+	</target>
+
+	<target name="Splash_TDSPromote">
+		
+	          <echo>Splash_TDSPromote</echo>
+	          <splash progressRegExp="Progress: (.*)%" showduration="0" displayText="Promovendo a Quente" imageurl="file:${basedir}\logototvs.png"/>
+			  <antcall target="reset-dir"/>                
+		      <echo>Progress: 10%</echo>
+			  <antcall target="prepare-dir"/>   
+	          <echo>Progress: 20%</echo>
+			  <antcall target="copy-file"/>   
+	          <echo>Progress: 50%</echo>
+			  <antcall target="zip-file"/>   
+	          <echo>Progress: 70%</echo>
+			  <antcall target="update-file"/>   
+	          <echo>Progress: 100%</echo>
+			  <echo message="Tarefa finalizada." />
+			  <eclipse.refreshLocal resource="TDSPromote" depth="infinite"/>
+			  <echo message="Não esqueca de executao o refresh no projeto se alguma mensagem de erro ocorrer." />
+        	
+	 </target>
+
+</project>
